@@ -177,7 +177,7 @@ if(!Array.isArray(people)) people = [];
 
 /* ---------- الأجسام: الاسم العربي والمقاسات الحقيقية التقريبية (م) ---------- */
 const OBJ = {
-  'person':{ar:'شخص',h:1.7,w:0.5},
+  'person':{ar:'شخص',h:1.7,w:0.5,useW:1},
   'chair':{ar:'كرسي',h:0.9,w:0.5},
   'couch':{ar:'كنبة',h:0.85,w:1.8,f:1,useW:1},
   'bed':{ar:'سرير',h:0.6,w:1.5,useW:1},
@@ -238,13 +238,15 @@ function speak(text, urgent){
   addLog(text);
   return true;
 }
-const lastSaid = {};
+const lastSaid = {}, announced = {};
+let lastAnySaid = 0;
 function say(key, text, opt){
   opt = opt || {};
   const now = Date.now();
   if(now - (lastSaid[key] || 0) < (opt.ms || 5000)) return false;
+  if(!opt.urgent && now - lastAnySaid < 3500) return false;   // فاصل عام بين أي تنبيهين عاديين
   const ok = speak(text, !!opt.urgent);
-  if(ok) lastSaid[key] = now;
+  if(ok){ lastSaid[key] = now; lastAnySaid = now; }
   return ok;
 }
 
@@ -549,7 +551,12 @@ function handleObjects(dets){
       text = c.zone === 'center' ? 'انتبه، قدامك ' + name + '، على بعد ' + arDist(c.dist)
            : 'انتبه، ' + name + ' على ' + (c.zone === 'left' ? 'يسارك' : 'يمينك') + '، على بعد ' + arDist(c.dist);
     }
-    if(say('obs:' + c.key, text, { ms: c.level === 'danger' ? 2500 : 6000, urgent: c.level === 'danger' })){ spoke = true; break; }
+    // التحذير العادي لا يتكرر لنفس الجسم إلا إذا اقترب 60 سم أو مرّت 12 ثانية
+    const prev = announced[c.key], nowT = Date.now();
+    if(c.level === 'warn' && prev && nowT - prev.t < 12000 && c.dist > prev.d - 0.6) continue;
+    if(say('obs:' + c.key, text, { ms: c.level === 'danger' ? 2500 : 3000, urgent: c.level === 'danger' })){
+      announced[c.key] = { t: nowT, d: c.dist }; spoke = true; break;
+    }
   }
 
   const center = cands.filter(c => c.zone === 'center').sort((a, b) => a.dist - b.dist)[0];
@@ -713,7 +720,7 @@ async function loop(){
         const now = performance.now();
         if(objModel && now - lastObjT > 220){
           lastObjT = now;
-          handleObjects(await objModel.detect(video, 10, 0.45));
+          handleObjects(await objModel.detect(video, 10, 0.55));
           frames++;
         }
         if(faceReady && matcher && performance.now() - lastFaceT > 650){
