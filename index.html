@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1620">
+<title>بصيرة</title>
+<style>
+:root{--bg:#0b1620;--panel:#122433;--line:#23425a;--fg:#f2f7fa;--mut:#9db4c4;--acc:#2bd4a8;--acc-ink:#04261e;--warn:#e9b949;--bad:#ff6b6b}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;-webkit-text-size-adjust:100%}
+body{max-width:720px;margin:0 auto;padding:calc(12px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));font-size:18px;line-height:1.6}
+h1,h2,h3{margin:0}
+:focus-visible{outline:4px solid #fff;outline-offset:3px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.top h1{font-size:34px;font-weight:800;letter-spacing:.5px;color:var(--acc)}
+.chip{font-size:16px;padding:4px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--mut)}
+.chip.ok{color:var(--acc);border-color:var(--acc)}
+.chip.run{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:700}
+.stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:20px;overflow:hidden;border:2px solid var(--line)}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+.placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--mut);font-size:20px}
+.hud{position:absolute;left:8px;right:8px;bottom:8px;display:flex;justify-content:space-between;gap:8px;font-size:16px;pointer-events:none}
+.hud span{background:rgba(0,0,0,.65);padding:2px 10px;border-radius:10px}
+.big{display:block;width:100%;min-height:64px;font:inherit;font-size:22px;font-weight:700;border-radius:18px;border:2px solid var(--line);background:var(--panel);color:var(--fg);padding:12px 18px;cursor:pointer}
+.big:disabled{opacity:.5;cursor:not-allowed}
+.big.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.big.stop{background:var(--bad);color:#2a0a0a;border-color:var(--bad)}
+.stack{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.row .big{font-size:17px;min-height:60px;padding:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px}
+.panel h2{font-size:20px;margin-bottom:8px;color:var(--acc)}
+.panel ul,.panel ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:17px}
+.panel li.bad{color:var(--bad)}
+.panel li.good{color:var(--acc)}
+.panel li small{display:block;color:var(--mut);font-size:14px;direction:ltr;text-align:left;word-break:break-all}
+#log li{color:var(--mut)}
+#log li:first-child{color:var(--fg)}
+.sheet{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:20;padding:calc(12px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom))}
+.sheet .inner{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.sheet h2{font-size:26px;color:var(--acc)}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:18px}
+input[type=text]{font:inherit;font-size:20px;padding:14px;border-radius:14px;border:2px solid var(--line);background:#0e1d2a;color:var(--fg)}
+input[type=file]{font:inherit;color:var(--mut)}
+input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
+.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;font-size:19px}
+.tog input{width:28px;height:28px;accent-color:var(--acc)}
+.val{color:var(--acc);font-weight:700;direction:ltr;display:inline-block}
+.person{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line);border-radius:14px}
+.person img{width:56px;height:56px;border-radius:12px;object-fit:cover;background:#000}
+.person .nm{flex:1;font-size:20px;font-weight:700}
+.person .nm small{display:block;font-weight:400;color:var(--mut);font-size:15px}
+.person button{font:inherit;font-size:16px;padding:10px 14px;border-radius:12px;border:2px solid var(--bad);background:transparent;color:var(--bad);cursor:pointer;min-height:48px}
+.note{color:var(--mut);font-size:16px}
+.warnbox{background:#3a2f14;color:#f6dfa2;border-radius:14px;padding:12px 14px;font-size:16px}
+.memgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.memgrid .big{font-size:20px;min-height:68px;padding:8px}
+.memans{margin:12px 0 0;font-size:20px;min-height:1.6em}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>بصيرة</h1>
+  <span id="statusChip" class="chip" role="status">جارٍ التحميل…</span>
+</header>
+
+<main>
+  <div id="httpsWarn" class="warnbox" hidden>الكاميرا لا تعمل إلا على رابط HTTPS. استضف الصفحة على Netlify أو GitHub Pages ثم افتحها من الجوال.</div>
+
+  <div id="safetyNote" class="warnbox" role="note" style="margin-bottom:12px"><strong>تنبيه مهم:</strong> بصيرة نموذج أولي مساعد، ولا تغني عن العصا أو المرافق. قد لا تكتشف الجدران والدرج والزجاج والحفر والأعمدة. وعدم سماع تنبيه لا يعني أن الطريق آمن.</div>
+
+  <section id="stage" class="stage" aria-label="عرض الكاميرا">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+    <div id="placeholder" class="placeholder">اضغط «ابدأ» لتشغيل الكاميرا</div>
+    <div class="hud"><span id="hudNear"></span><span id="hudInfo"></span></div>
+  </section>
+
+  <div class="stack">
+    <button id="startBtn" class="big primary" disabled>ابدأ بصيرة</button>
+    <div class="row">
+      <button id="peopleBtn" class="big">الأشخاص</button>
+      <button id="settingsBtn" class="big">الإعدادات</button>
+      <button id="flipBtn" class="big">تبديل الكاميرا</button>
+    </div>
+    <section class="panel" aria-labelledby="memH">
+      <h2 id="memH">أين أغراضي؟</h2>
+      <div id="memGrid" class="memgrid"></div>
+      <p id="memAns" class="memans" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel" aria-labelledby="logH">
+      <h2 id="logH">آخر التنبيهات</h2>
+      <ol id="log"><li>لا توجد تنبيهات بعد.</li></ol>
+    </section>
+    <section class="panel" aria-labelledby="loadH">
+      <h2 id="loadH">حالة النظام</h2>
+      <ul id="loadList"></ul>
+    </section>
+  </div>
+</main>
+
+<!-- الأشخاص -->
+<div id="peoplePanel" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="pH">
+  <div class="inner">
+    <h2 id="pH">الأشخاص المعروفون</h2>
+    <p class="note">أضف 3 إلى 5 صور واضحة لكل شخص، بإضاءة جيدة وزوايا مختلفة قليلًا. الصور لا تُحفظ، يُحفظ فقط وصف رقمي للوجه على هذا الجهاز.</p>
+    <label class="f">العبارة التي ينطقها التطبيق (مثل: أخوك محمد)
+      <input id="pLabel" type="text" autocomplete="off" placeholder="أخوك محمد">
+    </label>
+    <label class="f">اختر صور الشخص
+      <input id="pFiles" type="file" accept="image/*" multiple>
+    </label>
+    <button id="pCapture" class="big">التقط صورة من الكاميرا</button>
+    <p id="pStatus" class="note" role="status">الصور الملتقطة: 0</p>
+    <button id="pSave" class="big primary">حفظ الشخص</button>
+    <h2 style="font-size:22px">المحفوظون</h2>
+    <div id="pList" class="stack" style="margin-top:0"></div>
+    <button id="pClose" class="big">إغلاق</button>
+  </div>
+</div>
+
+<!-- الإعدادات -->
+<div id="settingsPanel" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sH">
+  <div class="inner">
+    <h2 id="sH">الإعدادات</h2>
+    <label class="tog">الصوت العربي<input type="checkbox" data-cfg="voice"></label>
+    <label class="tog">صفير القرب<input type="checkbox" data-cfg="beep"></label>
+    <label class="tog">الإعلان عن الأشخاص غير المعروفين<input type="checkbox" data-cfg="unknown"></label>
+    <label class="tog">إظهار المربعات على الشاشة<input type="checkbox" data-cfg="boxes"></label>
+    <label class="tog">كشف الأسطح القريبة (جدار) تجريبي<input type="checkbox" data-cfg="wall"></label>
+    <label class="f">معايرة المسافة <span class="val" id="v_focal"></span>
+      <input type="range" data-cfg="focal" min="0.5" max="1.8" step="0.05">
+      <span class="note">إن كانت المسافة المعروضة أكبر من الحقيقية فاخفض القيمة، وإن كانت أصغر فارفعها.</span>
+    </label>
+    <label class="f">حد التحذير بالأمتار <span class="val" id="v_warn"></span>
+      <input type="range" data-cfg="warn" min="0.8" max="4" step="0.1">
+    </label>
+    <label class="f">حد الخطر بالأمتار <span class="val" id="v_danger"></span>
+      <input type="range" data-cfg="danger" min="0.3" max="2.5" step="0.1">
+    </label>
+    <label class="f">حدّ تطابق الوجه <span class="val" id="v_faceThr"></span>
+      <input type="range" data-cfg="faceThr" min="0.35" max="0.65" step="0.01">
+      <span class="note">القيمة الأقل أشد: تقل الأخطاء لكن قد لا يتعرف على صاحب الوجه أحيانًا.</span>
+    </label>
+    <button id="sTest" class="big">تجربة الصوت</button>
+    <button id="sMemClear" class="big">مسح ذاكرة الأغراض</button>
+    <button id="sReset" class="big">استعادة الإعدادات الافتراضية</button>
+    <button id="sClose" class="big primary">إغلاق</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script>
+'use strict';
+/* ============================================================
+   بصيرة — نموذج أولي: نظارة ذكية للمكفوفين (تجربة بكاميرا الجوال)
+   1) تمييز الوجوه   2) تنبيه العوائق   — كله بالصوت العربي
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const CFG_KEY = 'baseera.cfg.v1', PEOPLE_KEY = 'baseera.people.v1';
+const DEFAULTS = { voice:true, beep:true, unknown:true, boxes:true, wall:false, focal:1.0, warn:2.0, danger:1.0, faceThr:0.5 };
+
+function loadJSON(key, fallback){
+  try{ const t = localStorage.getItem(key); return t ? JSON.parse(t) : fallback; }catch(e){ return fallback; }
+}
+function saveJSON(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); return true; }catch(e){ return false; }
+}
+const cfg = Object.assign({}, DEFAULTS, loadJSON(CFG_KEY, {}));
+let people = loadJSON(PEOPLE_KEY, []);
+if(!Array.isArray(people)) people = [];
+
+/* ---------- الأجسام: الاسم العربي والمقاسات الحقيقية التقريبية (م) ---------- */
+const OBJ = {
+  'person':{ar:'شخص',h:1.7,w:0.5},
+  'chair':{ar:'كرسي',h:0.9,w:0.5},
+  'couch':{ar:'كنبة',h:0.85,w:1.8,f:1,useW:1},
+  'bed':{ar:'سرير',h:0.6,w:1.5,useW:1},
+  'dining table':{ar:'طاولة',h:0.75,w:1.2,f:1,useW:1},
+  'potted plant':{ar:'نبتة',h:0.5,w:0.4,f:1},
+  'tv':{ar:'شاشة',h:0.5,w:0.9,f:1,useW:1},
+  'bench':{ar:'مقعد',h:0.8,w:1.5,useW:1},
+  'suitcase':{ar:'شنطة سفر',h:0.6,w:0.45,f:1},
+  'refrigerator':{ar:'ثلاجة',h:1.7,w:0.7,f:1},
+  'bicycle':{ar:'دراجة',h:1.0,w:1.7,f:1,useW:1},
+  'motorcycle':{ar:'دراجة نارية',h:1.1,w:1.9,f:1,useW:1},
+  'car':{ar:'سيارة',h:1.5,w:1.8,f:1,useW:1},
+  'bus':{ar:'حافلة',h:3.0,w:2.5,f:1,useW:1},
+  'truck':{ar:'شاحنة',h:3.0,w:2.5,f:1,useW:1},
+  'dog':{ar:'كلب',h:0.5,w:0.6},
+  'cat':{ar:'قطة',h:0.3,w:0.4,f:1},
+  'toilet':{ar:'مرحاض',h:0.7,w:0.4},
+  'sink':{ar:'مغسلة',h:0.3,w:0.5,f:1},
+  'oven':{ar:'فرن',h:0.9,w:0.6}
+};
+
+/* ---------- الصوت ---------- */
+let voiceObj = null;
+function pickVoice(){
+  try{
+    const vs = speechSynthesis.getVoices() || [];
+    voiceObj = vs.find(v => /^ar[-_]SA/i.test(v.lang)) || vs.find(v => /^ar/i.test(v.lang)) || null;
+  }catch(e){ voiceObj = null; }
+  return voiceObj;
+}
+if('speechSynthesis' in window){
+  pickVoice();
+  speechSynthesis.onvoiceschanged = () => { pickVoice(); updateSystemList(); };
+}
+
+const logEl = $('#log');
+function addLog(text){
+  const first = logEl.firstElementChild;
+  if(first && first.dataset.empty) logEl.removeChild(first);
+  const li = document.createElement('li');
+  const t = new Date();
+  li.textContent = t.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' · ' + text;
+  logEl.prepend(li);
+  while(logEl.children.length > 6) logEl.removeChild(logEl.lastElementChild);
+}
+logEl.firstElementChild.dataset.empty = '1';
+
+function speak(text, urgent){
+  if(!cfg.voice || !('speechSynthesis' in window)){ addLog(text); return true; }
+  const ss = speechSynthesis;
+  if(urgent){ ss.cancel(); }
+  else if(ss.speaking || ss.pending){ return false; }
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voiceObj || pickVoice();
+  if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'ar-SA'; }
+  u.rate = 1.0; u.pitch = 1.0;
+  ss.speak(u);
+  addLog(text);
+  return true;
+}
+const lastSaid = {};
+function say(key, text, opt){
+  opt = opt || {};
+  const now = Date.now();
+  if(now - (lastSaid[key] || 0) < (opt.ms || 5000)) return false;
+  const ok = speak(text, !!opt.urgent);
+  if(ok) lastSaid[key] = now;
+  return ok;
+}
+
+/* صفير يزداد سرعة كلما اقترب العائق */
+let ac = null, nextBeep = 0;
+function initAudio(){
+  try{
+    if(!ac){ const C = window.AudioContext || window.webkitAudioContext; if(C) ac = new C(); }
+    if(ac && ac.state === 'suspended') ac.resume();
+  }catch(e){}
+}
+function beep(freq){
+  if(!ac) return;
+  try{
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(ac.destination);
+    const t = ac.currentTime;
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.start(t); o.stop(t + 0.13);
+  }catch(e){}
+}
+function proximityBeep(d){
+  if(!cfg.beep || d == null || d > 2.5) return;
+  const now = performance.now();
+  if(now < nextBeep) return;
+  nextBeep = now + Math.max(180, Math.min(900, d * 350));
+  beep(500 + (2.5 - d) * 280);
+}
+
+function arDist(d){
+  if(d < 0.45) return 'أقل من نصف متر';
+  const m = Math.round(d * 2) / 2;
+  const map = {0.5:'نصف متر',1:'متر',1.5:'متر ونصف',2:'مترين',2.5:'مترين ونصف',3:'ثلاثة أمتار'};
+  return map[m] || (Math.round(d) + ' أمتار');
+}
+
+/* ---------- حالة النظام والتحميل ---------- */
+const sys = { tf:null, coco:null, faceLib:null, obj:null, face:null };  // null = جارٍ، true/false، أو نص الخطأ
+const sysErr = {};
+let objModel = null, faceReady = false, faceBase = '';
+
+function updateSystemList(){
+  const items = [
+    ['مكتبة TensorFlow.js', sys.tf],
+    ['مكتبة كشف الأجسام', sys.coco],
+    ['مكتبة الوجوه', sys.faceLib],
+    ['نموذج كشف العوائق', sys.obj],
+    ['نماذج تمييز الوجوه', sys.face]
+  ];
+  const ul = $('#loadList');
+  ul.textContent = '';
+  for(const [name, st] of items){
+    const li = document.createElement('li');
+    li.textContent = (st === true ? '✓ ' : st === null ? '… ' : '✗ ') + name;
+    li.className = st === true ? 'good' : (st === null ? '' : 'bad');
+    if(st !== true && st !== null && sysErr[name]){
+      const s = document.createElement('small'); s.textContent = sysErr[name]; li.appendChild(s);
+    }
+    ul.appendChild(li);
+  }
+  const li = document.createElement('li');
+  const hasAr = !!(voiceObj || ('speechSynthesis' in window && pickVoice()));
+  li.textContent = ('speechSynthesis' in window)
+    ? (hasAr ? '✓ صوت عربي متوفر: ' + voiceObj.name : '✗ لم أجد صوتًا عربيًا في جهازك (ثبّت صوتًا عربيًا من إعدادات النطق)')
+    : '✗ المتصفح لا يدعم النطق';
+  li.className = hasAr ? 'good' : 'bad';
+  ul.appendChild(li);
+  refreshChip();
+}
+function refreshChip(){
+  const chip = $('#statusChip');
+  if(running){ chip.textContent = 'يعمل'; chip.className = 'chip run'; return; }
+  const loading = (sys.obj === null && sys.coco !== false) || (sys.face === null && sys.faceLib !== false);
+  if(loading){ chip.textContent = 'جارٍ التحميل…'; chip.className = 'chip'; }
+  else if(objModel || faceReady){ chip.textContent = 'جاهز'; chip.className = 'chip ok'; }
+  else { chip.textContent = 'تعذر التحميل'; chip.className = 'chip'; }
+  $('#startBtn').disabled = !(objModel || faceReady);
+}
+function fail(name, e){ sysErr[name] = (e && e.message) ? e.message : String(e); console.error(name, e); }
+
+async function loadObjectModel(){
+  try{
+    sys.tf = (typeof tf !== 'undefined');
+    if(!sys.tf){ fail('مكتبة TensorFlow.js', 'لم يتم تحميل tf.min.js من الشبكة'); }
+    sys.coco = (typeof cocoSsd !== 'undefined');
+    if(!sys.coco){ fail('مكتبة كشف الأجسام', 'لم يتم تحميل coco-ssd'); }
+    updateSystemList();
+    if(sys.tf && sys.coco){
+      await tf.ready();
+      objModel = await cocoSsd.load({ base:'lite_mobilenet_v2' });
+      sys.obj = true;
+    } else { sys.obj = false; fail('نموذج كشف العوائق', 'المكتبات غير متوفرة'); }
+  }catch(e){ sys.obj = false; fail('نموذج كشف العوائق', e); }
+  updateSystemList();
+}
+
+const FACE_BASES = [
+  'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/',
+  'https://vladmandic.github.io/face-api/model/',
+  'https://justadudewhohacks.github.io/face-api.js/models/'
+];
+async function loadFaceModels(){
+  sys.faceLib = (typeof faceapi !== 'undefined');
+  if(!sys.faceLib){ fail('مكتبة الوجوه', 'لم يتم تحميل face-api.js من الشبكة'); sys.face = false; fail('نماذج تمييز الوجوه', 'المكتبة غير متوفرة'); updateSystemList(); return; }
+  updateSystemList();
+  let last = null;
+  for(const base of FACE_BASES){
+    try{
+      if(faceapi.tf && faceapi.tf.ready) await faceapi.tf.ready();
+      await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      faceReady = true; faceBase = base; sys.face = true;
+      rebuildMatcher();
+      updateSystemList();
+      return;
+    }catch(e){ last = e; console.warn('face models failed at', base, e); }
+  }
+  sys.face = false; fail('نماذج تمييز الوجوه', last);
+  updateSystemList();
+}
+
+/* ---------- الأشخاص ---------- */
+let matcher = null;
+function rebuildMatcher(){
+  matcher = null;
+  if(!faceReady) return;
+  const labeled = people.filter(p => p.descs && p.descs.length)
+    .map(p => new faceapi.LabeledFaceDescriptors(p.id, p.descs.map(a => new Float32Array(a))));
+  if(labeled.length) matcher = new faceapi.FaceMatcher(labeled, cfg.faceThr);
+}
+function savePeople(){ return saveJSON(PEOPLE_KEY, people); }
+
+const pending = { descs: [], thumb: null };
+function setPStatus(t){ $('#pStatus').textContent = t; }
+
+async function fileToCanvas(file, max){
+  let bmp;
+  try{ bmp = await createImageBitmap(file, { imageOrientation:'from-image' }); }
+  catch(e){ bmp = await createImageBitmap(file); }
+  const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  if(bmp.close) bmp.close();
+  return c;
+}
+function makeThumb(src, box){
+  const c = document.createElement('canvas'); c.width = c.height = 80;
+  const m = 0.35, s = Math.max(box.width, box.height) * (1 + m * 2);
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  try{ c.getContext('2d').drawImage(src, cx - s/2, cy - s/2, s, s, 0, 0, 80, 80); }catch(e){}
+  return c.toDataURL('image/jpeg', 0.7);
+}
+async function describeSource(src){
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize:512, scoreThreshold:0.4 });
+  const r = await faceapi.detectSingleFace(src, opts).withFaceLandmarks().withFaceDescriptor();
+  if(!r) return null;
+  return { desc: Array.from(r.descriptor), box: r.detection.box };
+}
+function addSample(res, src){
+  pending.descs.push(res.desc);
+  if(!pending.thumb) pending.thumb = makeThumb(src, res.box);
+  const msg = 'الصور الملتقطة: ' + pending.descs.length;
+  setPStatus(msg); speak('تمت إضافة صورة. ' + msg.replace('الصور الملتقطة:', 'المجموع'), true);
+}
+async function onFiles(files){
+  if(!faceReady){ setPStatus('نماذج الوجوه لم تُحمّل بعد.'); return; }
+  let bad = 0;
+  setPStatus('جارٍ تحليل الصور…');
+  for(const f of files){
+    try{
+      const c = await fileToCanvas(f, 800);
+      const r = await describeSource(c);
+      if(r) addSample(r, c); else bad++;
+    }catch(e){ console.error(e); bad++; }
+  }
+  setPStatus('الصور الملتقطة: ' + pending.descs.length + (bad ? ' · تعذر العثور على وجه في ' + bad + ' صورة' : ''));
+  if(bad) speak('لم أجد وجهًا واضحًا في ' + bad + ' صورة', true);
+  $('#pFiles').value = '';
+}
+async function onCapture(){
+  if(!faceReady){ setPStatus('نماذج الوجوه لم تُحمّل بعد.'); return; }
+  if(!running || video.readyState < 2){ setPStatus('شغّل الكاميرا أولًا من الشاشة الرئيسية.'); speak('شغّل الكاميرا أولًا', true); return; }
+  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0);
+  try{
+    const r = await describeSource(c);
+    if(r) addSample(r, c); else { setPStatus('لم أجد وجهًا واضحًا، حاول مرة أخرى.'); speak('لم أجد وجهًا واضحًا', true); }
+  }catch(e){ console.error(e); setPStatus('حدث خطأ أثناء التحليل.'); }
+}
+function onSavePerson(){
+  const label = $('#pLabel').value.trim();
+  if(!label){ setPStatus('اكتب العبارة التي ينطقها التطبيق أولًا.'); speak('اكتب الاسم أولًا', true); return; }
+  if(!pending.descs.length){ setPStatus('أضف صورة واحدة على الأقل.'); speak('أضف صورة واحدة على الأقل', true); return; }
+  people.push({ id:'p' + Date.now(), label, descs: pending.descs.slice(0, 8), thumb: pending.thumb });
+  const ok = savePeople();
+  rebuildMatcher();
+  pending.descs = []; pending.thumb = null; $('#pLabel').value = '';
+  setPStatus(ok ? 'تم الحفظ.' : 'تعذر الحفظ على هذا الجهاز (المساحة ممتلئة؟).');
+  speak(ok ? 'تم حفظ ' + label : 'تعذر الحفظ', true);
+  renderPeople();
+}
+function renderPeople(){
+  const box = $('#pList'); box.textContent = '';
+  if(!people.length){ const p = document.createElement('p'); p.className = 'note'; p.textContent = 'لا يوجد أشخاص محفوظون بعد.'; box.appendChild(p); return; }
+  for(const p of people){
+    const row = document.createElement('div'); row.className = 'person';
+    if(p.thumb){ const im = document.createElement('img'); im.alt = ''; im.src = p.thumb; row.appendChild(im); }
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.label;
+    const sm = document.createElement('small'); sm.textContent = (p.descs ? p.descs.length : 0) + ' صور'; nm.appendChild(sm);
+    row.appendChild(nm);
+    const del = document.createElement('button'); del.textContent = 'حذف'; del.setAttribute('aria-label', 'حذف ' + p.label);
+    del.addEventListener('click', () => { people = people.filter(x => x.id !== p.id); savePeople(); rebuildMatcher(); renderPeople(); speak('تم حذف ' + p.label, true); });
+    row.appendChild(del);
+    box.appendChild(row);
+  }
+}
+
+/* ---------- الكاميرا ---------- */
+const video = $('#video'), overlay = $('#overlay'), octx = overlay.getContext('2d');
+let stream = null, facing = 'environment', running = false, wakeLock = null;
+
+async function startCamera(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('المتصفح لا يدعم الكاميرا (تحتاج HTTPS)');
+  stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facing }, width:{ ideal:640 }, height:{ ideal:480 } }, audio:false });
+  video.srcObject = stream;
+  await video.play();
+  if(!video.videoWidth) await new Promise(r => video.addEventListener('loadedmetadata', r, { once:true }));
+  $('#stage').style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+  overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+  $('#placeholder').hidden = true;
+}
+function stopCamera(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  $('#placeholder').hidden = false;
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+}
+
+/* ---------- كشف العوائق ---------- */
+let lastObjs = [], lastFaces = [], streak = {}, flatStreak = 0, lastKnownFaceAt = 0;
+
+const sc = document.createElement('canvas'); sc.width = 48; sc.height = 36;
+const sx = sc.getContext('2d', { willReadFrequently:true });
+function centerFlatness(){
+  sx.drawImage(video, 0, 0, 48, 36);
+  const d = sx.getImageData(14, 8, 20, 20).data;
+  const lum = i => d[i] * 0.3 + d[i+1] * 0.59 + d[i+2] * 0.11;
+  let sum = 0, n = 0;
+  for(let y = 0; y < 19; y++) for(let x = 0; x < 19; x++){
+    const i = (y * 20 + x) * 4, g = lum(i);
+    sum += Math.abs(g - lum(i + 4)) + Math.abs(g - lum(i + 80)); n++;
+  }
+  return sum / n / 2;
+}
+
+function handleObjects(dets){
+  const W = video.videoWidth, H = video.videoHeight;
+  updateMemory(dets, W, H);
+  const f = 0.785 * Math.max(W, H) * cfg.focal;       // طول بؤري تقريبي بالبكسل
+  const cands = [];
+  for(const d of dets){
+    const o = OBJ[d.class]; if(!o) continue;
+    const [x, y, w, h] = d.bbox; if(w < 8 || h < 8) continue;
+    // صندوق يلامس حافة الإطار = جزء من الجسم مقصوص، فيظهر أصغر ويُقدَّر أبعد من الحقيقة.
+    // نقرّب التقدير (×0.6) حتى يكون الخطأ في جهة الأمان.
+    const m = Math.max(4, W * 0.015);
+    const cutV = y <= m || y + h >= H - m, cutH = x <= m || x + w >= W - m;
+    let dist = f * o.h / h * (cutV ? 0.6 : 1);
+    if(o.useW) dist = Math.min(dist, f * o.w / w * (cutH ? 0.6 : 1));
+    if(Math.sqrt((w * h) / (W * H)) > 0.6) dist = Math.min(dist, 0.5);
+    const cx = (x + w / 2) / W;
+    const zone = cx < 0.33 ? 'left' : cx > 0.67 ? 'right' : 'center';
+    const warnT = zone === 'center' ? cfg.warn : cfg.warn * 0.6;
+    const dangT = zone === 'center' ? cfg.danger : cfg.danger * 0.6;
+    const level = dist < dangT ? 'danger' : dist < warnT ? 'warn' : null;
+    cands.push({ cls:d.class, o, x, y, w, h, dist, zone, level, key:d.class + ':' + zone });
+  }
+  lastObjs = cands;
+
+  // عدّاد الثبات: لا نتكلم إلا لو ظهر الجسم في إطارين متتاليين (الخطر فورًا)
+  const present = {};
+  for(const c of cands) if(c.level) present[c.key] = true;
+  for(const k of Object.keys(streak)) if(!present[k]) delete streak[k];
+  for(const k of Object.keys(present)) streak[k] = (streak[k] || 0) + 1;
+
+  const alerts = cands.filter(c => c.level)
+    .filter(c => !(c.cls === 'person' && c.level !== 'danger' && Date.now() - lastKnownFaceAt < 4000))
+    .filter(c => c.level === 'danger' || streak[c.key] >= 2)
+    .sort((a, b) => a.dist - b.dist);
+  let spoke = false;
+  for(const c of alerts){
+    const name = c.o.ar, near = c.o.f ? 'قريبة' : 'قريب';
+    let text;
+    if(c.level === 'danger'){
+      text = c.zone === 'center' ? 'قف! ' + name + ' ' + near + ' جدًا قدامك'
+           : 'انتبه! ' + name + ' ' + near + ' جدًا على ' + (c.zone === 'left' ? 'يسارك' : 'يمينك');
+    } else {
+      text = c.zone === 'center' ? 'انتبه، قدامك ' + name + '، على بعد ' + arDist(c.dist)
+           : 'انتبه، ' + name + ' على ' + (c.zone === 'left' ? 'يسارك' : 'يمينك') + '، على بعد ' + arDist(c.dist);
+    }
+    if(say('obs:' + c.key, text, { ms: c.level === 'danger' ? 2500 : 6000, urgent: c.level === 'danger' })){ spoke = true; break; }
+  }
+
+  const center = cands.filter(c => c.zone === 'center').sort((a, b) => a.dist - b.dist)[0];
+  proximityBeep(center ? center.dist : null);
+
+  const nearest = cands.slice().sort((a, b) => a.dist - b.dist)[0];
+  $('#hudNear').textContent = nearest ? ('الأقرب: ' + nearest.o.ar + ' · ' + nearest.dist.toFixed(1) + ' م') : '';
+
+  // كشف الأسطح القريبة (جدار) — تجريبي
+  if(cfg.wall){
+    const flat = centerFlatness();
+    const objectNear = cands.some(c => c.zone === 'center' && c.dist < cfg.warn);
+    flatStreak = (flat < 2.5 && !objectNear) ? flatStreak + 1 : 0;
+    if(flatStreak >= 4 && !spoke) say('wall', 'انتبه، في سطح قريب جدًا قدامك', { ms: 5000 });
+  } else flatStreak = 0;
+}
+
+/* ---------- تمييز الوجوه ---------- */
+const faceSeen = {};
+function posPhrase(cx){
+  if(facing === 'user') return 'قدامك';
+  return cx < 0.33 ? 'على يسارك' : cx > 0.67 ? 'على يمينك' : 'قدامك';
+}
+async function handleFaces(){
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize:416, scoreThreshold:0.5 });
+  const res = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
+  const W = video.videoWidth, now = Date.now();
+  lastFaces = [];
+  for(const r of res){
+    const b = r.detection.box, cx = (b.x + b.width / 2) / W;
+    const best = matcher.findBestMatch(r.descriptor);
+    const known = best.label !== 'unknown' ? people.find(p => p.id === best.label) : null;
+    lastFaces.push({ box:b, name: known ? known.label : 'غير معروف', known: !!known });
+    if(known){
+      lastKnownFaceAt = now;
+      const s = faceSeen[known.id] || (faceSeen[known.id] = { n:0, last:0 });
+      s.n = (now - s.last < 2500) ? s.n + 1 : 1; s.last = now;
+      if(s.n >= 2) say('face:' + known.id, known.label + ' ' + posPhrase(cx), { ms: 8000 });
+    } else if(cfg.unknown){
+      const s = faceSeen.unk || (faceSeen.unk = { n:0, last:0 });
+      s.n = (now - s.last < 2500) ? s.n + 1 : 1; s.last = now;
+      if(s.n >= 3) say('unk', 'شخص لا أعرفه ' + posPhrase(cx), { ms: 20000 });
+    }
+  }
+}
+
+/* ---------- ذاكرة الأغراض: آخر مشاهدة لكل غرض (نص فقط، بدون صور) ---------- */
+const MEM_KEY = 'baseera.mem.v1';
+const MEM_ITEMS = {
+  'cell phone':{ar:'الجوال', ask:'وين جوالي؟', f:0},
+  'remote':{ar:'الريموت', ask:'وين الريموت؟', f:0},
+  'laptop':{ar:'اللابتوب', ask:'وين اللابتوب؟', f:0},
+  'cup':{ar:'الكوب', ask:'وين الكوب؟', f:0},
+  'bottle':{ar:'القارورة', ask:'وين القارورة؟', f:1},
+  'backpack':{ar:'الشنطة', ask:'وين الشنطة؟', f:1},
+  'book':{ar:'الكتاب', ask:'وين الكتاب؟', f:0}
+};
+const LANDMARKS = {
+  'dining table':{ar:'الطاولة', on:1}, 'couch':{ar:'الكنبة', on:1}, 'bed':{ar:'السرير', on:1},
+  'bench':{ar:'المقعد', on:1}, 'chair':{ar:'الكرسي', on:1}, 'tv':{ar:'الشاشة', on:0},
+  'refrigerator':{ar:'الثلاجة', on:0}, 'sink':{ar:'المغسلة', on:0}, 'oven':{ar:'الفرن', on:0},
+  'microwave':{ar:'المايكرويف', on:0}
+};
+let mem = loadJSON(MEM_KEY, {});
+if(!mem || typeof mem !== 'object' || Array.isArray(mem)) mem = {};
+let memDirty = false, memSaveT = 0, memStreak = {};
+
+function nearestLandmark(cx, cy, dets, W, H){
+  let best = null;
+  for(const d of dets){
+    const lm = LANDMARKS[d.class]; if(!lm || d.score < 0.4) continue;
+    const [x, y, w, h] = d.bbox;
+    const inside = cx >= x && cx <= x + w && cy >= y && cy <= y + h;
+    const dx = Math.max(x - cx, 0, cx - (x + w)), dy = Math.max(y - cy, 0, cy - (y + h));
+    const dist = inside ? 0 : Math.hypot(dx, dy) / Math.max(W, H);
+    if(!inside && dist > 0.15) continue;
+    if(!best || dist < best.dist) best = { dist, text: (inside && lm.on ? 'على ' : 'قرب ') + lm.ar };
+  }
+  return best ? best.text : '';
+}
+function updateMemory(dets, W, H){
+  const now = Date.now(), seen = {};
+  for(const d of dets){
+    const it = MEM_ITEMS[d.class];
+    if(!it || d.score < 0.5 || seen[d.class]) continue;
+    seen[d.class] = true;
+    memStreak[d.class] = (memStreak[d.class] || 0) + 1;
+    if(memStreak[d.class] < 2) continue;           // لا نسجل إلا بعد إطارين متتاليين
+    const [x, y, w, h] = d.bbox;
+    mem[d.class] = { t: now, near: nearestLandmark(x + w / 2, y + h / 2, dets, W, H), side: posPhrase((x + w / 2) / W) };
+    memDirty = true;
+  }
+  for(const k of Object.keys(memStreak)) if(!seen[k]) delete memStreak[k];
+  if(memDirty && now - memSaveT > 5000) flushMemory();
+}
+function flushMemory(){ if(memDirty){ saveJSON(MEM_KEY, mem); memDirty = false; } memSaveT = Date.now(); }
+
+function agoText(ms){
+  const m = Math.round(ms / 60000);
+  if(m < 1) return 'قبل لحظات';
+  if(m < 60) return m === 1 ? 'قبل دقيقة' : m === 2 ? 'قبل دقيقتين' : m <= 10 ? 'قبل ' + m + ' دقائق' : 'قبل ' + m + ' دقيقة';
+  const h = Math.round(ms / 3600000);
+  if(h < 24) return h === 1 ? 'قبل ساعة' : h === 2 ? 'قبل ساعتين' : h <= 10 ? 'قبل ' + h + ' ساعات' : 'قبل ' + h + ' ساعة';
+  const d = Math.round(ms / 86400000);
+  return d === 1 ? 'قبل يوم' : d === 2 ? 'قبل يومين' : d <= 10 ? 'قبل ' + d + ' أيام' : 'قبل ' + d + ' يوم';
+}
+function memAnswer(key){
+  const it = MEM_ITEMS[key], r = mem[key];
+  if(!r) return 'ما شفت ' + it.ar + ' للحين';
+  const ms = Date.now() - r.t;
+  const parts = [];
+  if(ms < 4000) parts.push(it.ar + (it.f ? ' موجودة' : ' موجود') + ' الآن ' + r.side);
+  else parts.push(it.ar + '، ' + (it.f ? 'شفتها ' : 'شفته ') + agoText(ms));
+  if(r.near) parts.push(r.near);
+  if(ms >= 4000 && r.side) parts.push(r.side);
+  return parts.join('، ');
+}
+function renderMem(){
+  const grid = $('#memGrid'); grid.textContent = '';
+  for(const key of Object.keys(MEM_ITEMS)){
+    const b = document.createElement('button');
+    b.className = 'big'; b.textContent = MEM_ITEMS[key].ask;
+    b.addEventListener('click', () => {
+      initAudio();
+      const t = memAnswer(key);
+      $('#memAns').textContent = t;
+      speak(t, true);
+    });
+    grid.appendChild(b);
+  }
+}
+
+/* ---------- الرسم والحلقة الرئيسية ---------- */
+function draw(){
+  const W = overlay.width, H = overlay.height;
+  octx.clearRect(0, 0, W, H);
+  if(!cfg.boxes) return;
+  const lw = Math.max(3, W / 160), fs = Math.max(18, Math.round(W / 26));
+  octx.lineWidth = lw; octx.font = '700 ' + fs + 'px system-ui, Tahoma, sans-serif'; octx.textBaseline = 'top';
+  for(const c of lastObjs){
+    const col = c.level === 'danger' ? '#ff6b6b' : c.level === 'warn' ? '#e9b949' : '#7fa6c0';
+    octx.strokeStyle = col; octx.strokeRect(c.x, c.y, c.w, c.h);
+    const t = c.o.ar + ' ' + c.dist.toFixed(1) + 'م', tw = octx.measureText(t).width + 12;
+    octx.fillStyle = col; octx.fillRect(c.x, Math.max(0, c.y - fs - 6), tw, fs + 6);
+    octx.fillStyle = '#04141f'; octx.fillText(t, c.x + 6, Math.max(0, c.y - fs - 6) + 3);
+  }
+  for(const f of lastFaces){
+    const col = f.known ? '#2bd4a8' : '#b9c6d0', b = f.box;
+    octx.strokeStyle = col; octx.strokeRect(b.x, b.y, b.width, b.height);
+    const tw = octx.measureText(f.name).width + 12;
+    octx.fillStyle = col; octx.fillRect(b.x, b.y + b.height, tw, fs + 6);
+    octx.fillStyle = '#04141f'; octx.fillText(f.name, b.x + 6, b.y + b.height + 3);
+  }
+}
+
+let lastObjT = 0, lastFaceT = 0, errCount = 0, frames = 0, fpsT = performance.now();
+async function loop(){
+  while(running){
+    if(video.readyState >= 2){
+      try{
+        const now = performance.now();
+        if(objModel && now - lastObjT > 220){
+          lastObjT = now;
+          handleObjects(await objModel.detect(video, 10, 0.45));
+          frames++;
+        }
+        if(faceReady && matcher && performance.now() - lastFaceT > 650){
+          lastFaceT = performance.now();
+          await handleFaces();
+        }
+        errCount = 0;
+      }catch(e){
+        console.error(e); errCount++;
+        if(errCount > 15){ await stopAll(); speak('توقف التطبيق بسبب خطأ تقني', true); return; }
+      }
+      draw();
+      const t = performance.now();
+      if(t - fpsT > 2000){ $('#hudInfo').textContent = (frames / ((t - fpsT) / 1000)).toFixed(1) + ' إطار/ث'; frames = 0; fpsT = t; }
+    }
+    await new Promise(r => requestAnimationFrame(r));
+  }
+}
+
+async function startAll(){
+  initAudio();
+  try{
+    await startCamera();
+  }catch(e){
+    console.error(e);
+    const msg = (e && e.name === 'NotAllowedError') ? 'لم يُسمح باستخدام الكاميرا. اسمح بها من إعدادات المتصفح.' : 'تعذر تشغيل الكاميرا: ' + (e.message || e);
+    addLog(msg); speak(msg, true); return;
+  }
+  try{ if(navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+  running = true; streak = {}; lastObjs = []; lastFaces = [];
+  $('#startBtn').textContent = 'إيقاف بصيرة'; $('#startBtn').className = 'big stop';
+  refreshChip();
+  let msg = 'بصيرة تعمل. تنبيه: لا تغني عن العصا، وقد لا أكتشف الجدران والدرج. وعدم سماع تنبيه لا يعني أن الطريق آمن.';
+  if(!objModel) msg += ' كشف العوائق غير متوفر.';
+  if(!faceReady) msg += ' تمييز الوجوه غير متوفر.';
+  else if(!people.length) msg += ' لم تُضف أي شخص بعد.';
+  speak(msg, true);
+  loop();
+}
+async function stopAll(){
+  running = false;
+  flushMemory();
+  stopCamera();
+  try{ if(wakeLock){ await wakeLock.release(); wakeLock = null; } }catch(e){}
+  try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  $('#startBtn').textContent = 'ابدأ بصيرة'; $('#startBtn').className = 'big primary';
+  $('#hudNear').textContent = ''; $('#hudInfo').textContent = '';
+  refreshChip();
+}
+
+/* ---------- الواجهة ---------- */
+$('#startBtn').addEventListener('click', () => { running ? stopAll() : startAll(); });
+$('#flipBtn').addEventListener('click', async () => {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  if(running){
+    running = false; stopCamera();
+    await new Promise(r => setTimeout(r, 150));
+    await startAll();
+  }
+  speak(facing === 'user' ? 'الكاميرا الأمامية' : 'الكاميرا الخلفية', true);
+});
+
+function openSheet(id){ $(id).hidden = false; $(id).scrollTop = 0; const f = $(id).querySelector('input,button'); if(f) f.focus(); }
+function closeSheet(id){ $(id).hidden = true; }
+$('#peopleBtn').addEventListener('click', () => { renderPeople(); openSheet('#peoplePanel'); });
+$('#pClose').addEventListener('click', () => closeSheet('#peoplePanel'));
+$('#settingsBtn').addEventListener('click', () => { syncSettingsUI(); openSheet('#settingsPanel'); });
+$('#sClose').addEventListener('click', () => closeSheet('#settingsPanel'));
+document.addEventListener('keydown', e => { if(e.key === 'Escape'){ closeSheet('#peoplePanel'); closeSheet('#settingsPanel'); } });
+$('#pFiles').addEventListener('change', e => { if(e.target.files.length) onFiles(Array.from(e.target.files)); });
+$('#pCapture').addEventListener('click', onCapture);
+$('#pSave').addEventListener('click', onSavePerson);
+
+function syncSettingsUI(){
+  document.querySelectorAll('[data-cfg]').forEach(el => {
+    const k = el.dataset.cfg;
+    if(el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k];
+    const v = $('#v_' + k); if(v) v.textContent = cfg[k];
+  });
+}
+document.querySelectorAll('[data-cfg]').forEach(el => {
+  el.addEventListener('input', () => {
+    const k = el.dataset.cfg;
+    cfg[k] = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
+    const v = $('#v_' + k); if(v) v.textContent = cfg[k];
+    if(k === 'faceThr') rebuildMatcher();
+    if(k === 'beep' && cfg.beep) initAudio();
+    saveJSON(CFG_KEY, cfg);
+  });
+});
+$('#sTest').addEventListener('click', () => { initAudio(); beep(700); speak('بصيرة تعمل. انتبه، قدامك كرسي، على بعد متر ونصف', true); });
+$('#sReset').addEventListener('click', () => { Object.assign(cfg, DEFAULTS); saveJSON(CFG_KEY, cfg); syncSettingsUI(); rebuildMatcher(); speak('تمت استعادة الإعدادات', true); });
+
+$('#sMemClear').addEventListener('click', () => { mem = {}; memStreak = {}; memDirty = false; saveJSON(MEM_KEY, mem); $('#memAns').textContent = ''; speak('تم مسح ذاكرة الأغراض', true); });
+window.addEventListener('pagehide', flushMemory);
+document.addEventListener('visibilitychange', () => { if(document.hidden) flushMemory(); });
+
+/* ---------- البدء ---------- */
+if(location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) $('#httpsWarn').hidden = false;
+syncSettingsUI();
+renderMem();
+updateSystemList();
+loadObjectModel();
+loadFaceModels();
+</script>
+</body>
+</html>
