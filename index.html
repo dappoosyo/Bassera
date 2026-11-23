@@ -84,8 +84,7 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
   <div class="stack">
     <button id="startBtn" class="big primary" disabled>ابدأ بصيرة</button>
     <button id="voiceBtn" class="big ptt" aria-label="أمر صوتي. اضغط مطولا وتكلم، وارفع إصبعك عند الانتهاء">🎤 اضغط مطولًا وتكلم</button>
-    <button id="contBtn" class="big" aria-pressed="false">👂 الاستماع المستمر: متوقف</button>
-    <p class="note" style="margin:0">اضغط «تحدث» وقل: ابدأ، إيقاف، وين جوالي، كرر، بدل الكاميرا، مساعدة. أو فعّل الاستماع المستمر وقل «بصيرة» ثم الأمر (تجريبي، يعمل غالبًا على أندرويد).</p>
+    <p class="note" style="margin:0">اضغط مطولًا على الزر الكبير وقل: ابدأ، إيقاف، وين جوالي، كرر، بدل الكاميرا، مساعدة. ثم ارفع إصبعك.</p>
     <div class="row">
       <button id="peopleBtn" class="big">الأشخاص</button>
       <button id="settingsBtn" class="big">الإعدادات</button>
@@ -93,7 +92,7 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
     </div>
     <section class="panel" aria-labelledby="memH">
       <h2 id="memH">أين أغراضي؟</h2>
-      <div id="memGrid" class="memgrid"></div>
+      <p class="note" style="margin:0">اسأل بصوتك: «وين جوالي؟» أو الريموت أو اللابتوب أو الكوب أو القارورة أو الشنطة أو الكتاب.</p>
       <p id="memAns" class="memans" role="status" aria-live="polite"></p>
     </section>
     <section class="panel" aria-labelledby="logH">
@@ -135,7 +134,12 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
     <label class="tog">صفير القرب<input type="checkbox" data-cfg="beep"></label>
     <label class="tog">الإعلان عن الأشخاص غير المعروفين<input type="checkbox" data-cfg="unknown"></label>
     <label class="tog">إظهار المربعات على الشاشة<input type="checkbox" data-cfg="boxes"></label>
+    <label class="tog">التنبيه للأجسام العمودية أمامك فقط<input type="checkbox" data-cfg="vert"></label>
     <label class="tog">كشف الأسطح القريبة (جدار) تجريبي<input type="checkbox" data-cfg="wall"></label>
+    <label class="f">تكرار التنبيه لنفس الجسم (ثانية) <span class="val" id="v_repeat"></span>
+      <input type="range" data-cfg="repeat" min="5" max="30" step="1">
+      <span class="note">يُنبَّه فورًا إن اقترب الجسم نصف متر، بغض النظر عن هذه المدة.</span>
+    </label>
     <label class="f">معايرة المسافة <span class="val" id="v_focal"></span>
       <input type="range" data-cfg="focal" min="0.5" max="1.8" step="0.05">
       <span class="note">إن كانت المسافة المعروضة أكبر من الحقيقية فاخفض القيمة، وإن كانت أصغر فارفعها.</span>
@@ -169,7 +173,7 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
 const $ = s => document.querySelector(s);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const CFG_KEY = 'baseera.cfg.v1', PEOPLE_KEY = 'baseera.people.v1';
-const DEFAULTS = { voice:true, beep:true, unknown:true, boxes:true, wall:false, focal:1.0, warn:2.0, danger:1.0, faceThr:0.5 };
+const DEFAULTS = { voice:true, beep:true, unknown:true, boxes:true, wall:false, vert:true, repeat:15, focal:1.0, warn:2.0, danger:1.0, faceThr:0.5 };
 
 function loadJSON(key, fallback){
   try{ const t = localStorage.getItem(key); return t ? JSON.parse(t) : fallback; }catch(e){ return fallback; }
@@ -202,7 +206,9 @@ const OBJ = {
   'cat':{ar:'قطة',h:0.3,w:0.4,f:1},
   'toilet':{ar:'مرحاض',h:0.7,w:0.4},
   'sink':{ar:'مغسلة',h:0.3,w:0.5,f:1},
-  'oven':{ar:'فرن',h:0.9,w:0.6}
+  'oven':{ar:'فرن',h:0.9,w:0.6},
+  'fire hydrant':{ar:'صنبور إطفاء',h:0.7,w:0.35},
+  'parking meter':{ar:'عمود عداد',h:1.2,w:0.3}
 };
 
 /* ---------- الصوت ---------- */
@@ -488,7 +494,7 @@ let stream = null, facing = 'environment', running = false, wakeLock = null;
 
 async function startCamera(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('المتصفح لا يدعم الكاميرا (تحتاج HTTPS)');
-  stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facing }, width:{ ideal:640 }, height:{ ideal:480 } }, audio:false });
+  stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facing }, width:{ ideal:480 }, height:{ ideal:360 } }, audio:false });
   video.srcObject = stream;
   await video.play();
   if(!video.videoWidth) await new Promise(r => video.addEventListener('loadedmetadata', r, { once:true }));
@@ -523,6 +529,7 @@ function centerFlatness(){
 function handleObjects(dets){
   const W = video.videoWidth, H = video.videoHeight;
   updateMemory(dets, W, H);
+  if(dets.some(d => d.class === 'person')) personSeenAt = Date.now();
   const f = 0.785 * Math.max(W, H) * cfg.focal;       // طول بؤري تقريبي بالبكسل
   const cands = [];
   for(const d of dets){
@@ -539,15 +546,17 @@ function handleObjects(dets){
     const zone = cx < 0.33 ? 'left' : cx > 0.67 ? 'right' : 'center';
     const warnT = zone === 'center' ? cfg.warn : cfg.warn * 0.6;
     const dangT = zone === 'center' ? cfg.danger : cfg.danger * 0.6;
-    const level = dist < dangT ? 'danger' : dist < warnT ? 'warn' : null;
-    cands.push({ cls:d.class, o, x, y, w, h, dist, zone, level, key:d.class + ':' + zone });
+    // وضع «العمودي في المنتصف»: لا ننبّه إلا للأجسام الأطول من عرضها وأمامك مباشرة
+    const relevant = !cfg.vert || (zone === 'center' && h >= w * 1.1);
+    const level = !relevant ? null : dist < dangT ? 'danger' : dist < warnT ? 'warn' : null;
+    cands.push({ cls:d.class, o, x, y, w, h, dist, zone, level, relevant, key:d.class + ':' + zone });
   }
   lastObjs = cands;
 
   // عدّاد الثبات: لا نتكلم إلا لو ظهر الجسم في إطارين متتاليين (الخطر فورًا)
   const present = {};
   for(const c of cands) if(c.level) present[c.key] = true;
-  for(const k of Object.keys(streak)) if(!present[k]) delete streak[k];
+  for(const k of Object.keys(streak)) if(!present[k]){ delete streak[k]; delete announced[k]; }
   for(const k of Object.keys(present)) streak[k] = (streak[k] || 0) + 1;
 
   const alerts = cands.filter(c => c.level)
@@ -565,15 +574,15 @@ function handleObjects(dets){
       text = c.zone === 'center' ? 'انتبه، قدامك ' + name + '، على بعد ' + arDist(c.dist)
            : 'انتبه، ' + name + ' على ' + (c.zone === 'left' ? 'يسارك' : 'يمينك') + '، على بعد ' + arDist(c.dist);
     }
-    // التحذير العادي لا يتكرر لنفس الجسم إلا إذا اقترب 60 سم أو مرّت 12 ثانية
-    const prev = announced[c.key], nowT = Date.now();
-    if(c.level === 'warn' && prev && nowT - prev.t < 12000 && c.dist > prev.d - 0.6) continue;
-    if(say('obs:' + c.key, text, { ms: c.level === 'danger' ? 2500 : 3000, urgent: c.level === 'danger' })){
-      announced[c.key] = { t: nowT, d: c.dist }; spoke = true; break;
+    // نفس الجسم: ننبّه عند ظهوره، ثم لا نكرر إلا بعد مدة الإعدادات، أو فورًا إذا اقترب 50 سم
+    const prev = announced[c.key];
+    if(prev && c.dist <= prev.d - 0.5) lastSaid['obs:' + c.key] = 0;
+    if(say('obs:' + c.key, text, { ms: c.level === 'danger' ? 3500 : cfg.repeat * 1000, urgent: c.level === 'danger' })){
+      announced[c.key] = { t: Date.now(), d: c.dist }; spoke = true; break;
     }
   }
 
-  const center = cands.filter(c => c.zone === 'center').sort((a, b) => a.dist - b.dist)[0];
+  const center = cands.filter(c => c.zone === 'center' && c.relevant).sort((a, b) => a.dist - b.dist)[0];
   proximityBeep(center ? center.dist : null);
 
   const nearest = cands.slice().sort((a, b) => a.dist - b.dist)[0];
@@ -688,15 +697,6 @@ function memAnswer(key){
   if(ms >= 4000 && r.side) parts.push(r.side);
   return parts.join('، ');
 }
-function renderMem(){
-  const grid = $('#memGrid'); grid.textContent = '';
-  for(const key of Object.keys(MEM_ITEMS)){
-    const b = document.createElement('button');
-    b.className = 'big'; b.textContent = MEM_ITEMS[key].ask;
-    b.addEventListener('click', () => askMem(key));
-    grid.appendChild(b);
-  }
-}
 
 /* ---------- الرسم والحلقة الرئيسية ---------- */
 function draw(){
@@ -722,17 +722,23 @@ function draw(){
 }
 
 let lastObjT = 0, lastFaceT = 0, errCount = 0, frames = 0, fpsT = performance.now();
+let personSeenAt = 0, objCost = 0;
 async function loop(){
   while(running){
     if(video.readyState >= 2){
       try{
         const now = performance.now();
-        if(objModel && now - lastObjT > 220){
+        // الفاصل يتكيّف مع سرعة الجهاز: لا نطلب إطارًا جديدًا قبل أن ينتهي السابق بفترة راحة
+        if(objModel && now - lastObjT > Math.max(220, objCost * 1.2)){
           lastObjT = now;
-          handleObjects(await objModel.detect(video, 10, 0.55));
+          const dets = await objModel.detect(video, 10, 0.55);
+          objCost = performance.now() - now;
+          handleObjects(dets);
           frames++;
         }
-        if(faceReady && matcher && performance.now() - lastFaceT > 650){
+        // الوجوه ثقيلة: نفحصها كثيرًا فقط حين يُرى شخص، وإلا كل 3 ثوانٍ
+        const faceGap = (Date.now() - personSeenAt < 2500) ? 800 : 3000;
+        if(faceReady && matcher && performance.now() - lastFaceT > faceGap){
           lastFaceT = performance.now();
           await handleFaces();
         }
@@ -859,7 +865,6 @@ function runCommand(raw){
     if(MEM_WORDS[key].some(w => t.includes(normAr(w)))){ askMem(key); return true; }
   }
   if(has('كاميرا') && has('بدل','اقلب','قلب','غير','تبديل','امامي','خلفي')){ $('#flipBtn').click(); return true; }
-  if(has('استماع','اسمع') && has('وقف','ايقاف','اوقف','توقف','اطفي','طفي','اغلق')){ setCont(false); return true; }
   if(has('وقف','ايقاف','اوقف','توقف','اطفي','طفي','اغلق')){
     if(running) stopAll().then(() => replyV('تم الإيقاف')); else replyV('بصيرة متوقفة أصلا');
     return true;
@@ -892,7 +897,6 @@ function toggleListen(){
   if(!SR){ replyV('متصفحك لا يدعم الأوامر الصوتية، استخدم الأزرار'); return; }
   if(listening && rec){ try{ rec.stop(); }catch(e){} return; }
   try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
-  pauseCont();
   rec = new SR();
   rec.lang = 'ar-SA'; rec.interimResults = false; rec.maxAlternatives = 3; rec.continuous = false;
   rec.onresult = e => {
@@ -904,14 +908,15 @@ function toggleListen(){
   };
   rec.onerror = e => {
     listening = false;
+    addLog('خطأ الميكروفون: ' + e.error);
     if(e.error === 'not-allowed' || e.error === 'service-not-allowed') replyV('لم يُسمح باستخدام الميكروفون. اسمح به من إعدادات المتصفح');
     else if(e.error === 'no-speech') replyV('ما سمعت شيئا');
-    else if(e.error === 'network') replyV('الأوامر الصوتية تحتاج إنترنت');
+    else if(e.error === 'network') replyV('خدمة التعرف على الصوت لا تعمل في هذا المتصفح. جرّب كروم، أو استخدم الأزرار');
     else if(e.error !== 'aborted') replyV('تعذر تشغيل الأوامر الصوتية');
   };
-  rec.onend = () => { listening = false; setVoiceBtn(false); resumeCont(); };
+  rec.onend = () => { listening = false; setVoiceBtn(false); };
   try{ listening = true; setVoiceBtn(true); beep(900); rec.start(); }
-  catch(err){ listening = false; setVoiceBtn(false); replyV('تعذر تشغيل الميكروفون'); resumeCont(); }
+  catch(err){ listening = false; setVoiceBtn(false); replyV('تعذر تشغيل الميكروفون'); }
 }
 /* اضغط مطولًا للتحدث (push-to-talk). التفعيل بدون ضغط مطوّل (قارئ الشاشة: نقر مزدوج) يبقى يعمل كتشغيل/إيقاف */
 const voiceBtn = $('#voiceBtn');
@@ -934,72 +939,9 @@ voiceBtn.addEventListener('click', () => {
   toggleListen();                              // تفعيل بالقارئ أو لوحة المفاتيح
 });
 
-/* ---------- الاستماع المستمر بكلمة التنبيه «بصيرة» ---------- */
-const WAKE = /(بصيره|بصيرا|بسيره|بصير)/;
-let contMode = false, contPaused = false, contRec = null, contStartT = 0, contFails = 0, armedUntil = 0;
-function setContBtn(){
-  const b = $('#contBtn');
-  b.textContent = contMode ? '👂 الاستماع المستمر: مفعّل (قل: بصيرة …)' : '👂 الاستماع المستمر: متوقف';
-  b.setAttribute('aria-pressed', contMode ? 'true' : 'false');
-}
-function handleCont(alts){
-  const now = Date.now();
-  for(const a of alts){
-    const w = a.match(WAKE);
-    if(!w) continue;
-    const rest = a.slice(w.index + w[0].length).trim();
-    if(!rest){ armedUntil = now + 7000; beep(900); return; }     // قال «بصيرة» فقط: ننتظر الأمر التالي
-    if(!runCommand(rest)) replyV('ما فهمت. قل مساعدة لسماع الأوامر');
-    return;
-  }
-  if(now < armedUntil){
-    armedUntil = 0;
-    if(!alts.some(a => runCommand(a))) replyV('ما فهمت. قل مساعدة لسماع الأوامر');
-  }
-}
-function onContResult(e){
-  for(let i = e.resultIndex; i < e.results.length; i++){
-    if(!e.results[i].isFinal) continue;
-    // نتجاهل ما يلتقطه الميكروفون من صوت التطبيق نفسه
-    try{ if(speechSynthesis.speaking || Date.now() - lastTtsEnd < 1500) continue; }catch(err){}
-    const alts = [];
-    for(let j = 0; j < e.results[i].length; j++) alts.push(normAr(e.results[i][j].transcript));
-    handleCont(alts);
-  }
-}
-function startCont(){
-  if(!SR || !contMode || contPaused) return;
-  try{ contRec = new SR(); }catch(e){ return; }
-  contRec.lang = 'ar-SA'; contRec.continuous = true; contRec.interimResults = false; contRec.maxAlternatives = 3;
-  contRec.onresult = onContResult;
-  contRec.onerror = e => {
-    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){ contMode = false; setContBtn(); replyV('لم يُسمح باستخدام الميكروفون. اسمح به من إعدادات المتصفح'); }
-    else if(e.error === 'network'){ contMode = false; setContBtn(); replyV('الاستماع المستمر يحتاج إنترنت'); }
-  };
-  contRec.onend = () => {
-    contFails = (Date.now() - contStartT < 1500) ? contFails + 1 : 0;
-    if(!contMode || contPaused) return;
-    if(contFails > 6){ contMode = false; setContBtn(); replyV('تعذر الاستماع المستمر، استخدم زر التحدث'); return; }
-    setTimeout(startCont, 400);
-  };
-  contStartT = Date.now();
-  try{ contRec.start(); }
-  catch(e){ contFails++; if(contFails <= 6) setTimeout(startCont, 800); }
-}
-function pauseCont(){ contPaused = true; try{ if(contRec) contRec.abort(); }catch(e){} }
-function resumeCont(){ contPaused = false; if(contMode) setTimeout(startCont, 300); }
-function setCont(on){
-  if(on && !SR){ replyV('متصفحك لا يدعم الأوامر الصوتية'); return; }
-  contMode = on; contFails = 0; armedUntil = 0; setContBtn();
-  if(on){ initAudio(); replyV('تم تشغيل الاستماع المستمر. قل بصيرة ثم الأمر'); contPaused = false; setTimeout(startCont, 600); }
-  else { try{ if(contRec) contRec.abort(); }catch(e){} replyV('تم إيقاف الاستماع المستمر'); }
-}
-$('#contBtn').addEventListener('click', () => setCont(!contMode));
-
 /* ---------- البدء ---------- */
 if(location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) $('#httpsWarn').hidden = false;
 syncSettingsUI();
-renderMem();
 updateSystemList();
 loadObjectModel();
 loadFaceModels();
