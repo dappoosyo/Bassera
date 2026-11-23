@@ -58,6 +58,8 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
 .memgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .memgrid .big{font-size:20px;min-height:68px;padding:8px}
 .memans{margin:12px 0 0;font-size:20px;min-height:1.6em}
+.ptt{min-height:34vh;font-size:30px;line-height:1.4;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;background:#1b3a52;border-color:var(--acc)}
+.ptt.on{background:var(--acc);color:var(--acc-ink)}
 </style>
 </head>
 <body>
@@ -81,6 +83,9 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
 
   <div class="stack">
     <button id="startBtn" class="big primary" disabled>ابدأ بصيرة</button>
+    <button id="voiceBtn" class="big ptt" aria-label="أمر صوتي. اضغط مطولا وتكلم، وارفع إصبعك عند الانتهاء">🎤 اضغط مطولًا وتكلم</button>
+    <button id="contBtn" class="big" aria-pressed="false">👂 الاستماع المستمر: متوقف</button>
+    <p class="note" style="margin:0">اضغط «تحدث» وقل: ابدأ، إيقاف، وين جوالي، كرر، بدل الكاميرا، مساعدة. أو فعّل الاستماع المستمر وقل «بصيرة» ثم الأمر (تجريبي، يعمل غالبًا على أندرويد).</p>
     <div class="row">
       <button id="peopleBtn" class="big">الأشخاص</button>
       <button id="settingsBtn" class="big">الإعدادات</button>
@@ -162,6 +167,7 @@ input[type=range]{width:100%;height:36px;accent-color:var(--acc)}
    1) تمييز الوجوه   2) تنبيه العوائق   — كله بالصوت العربي
    ============================================================ */
 const $ = s => document.querySelector(s);
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const CFG_KEY = 'baseera.cfg.v1', PEOPLE_KEY = 'baseera.people.v1';
 const DEFAULTS = { voice:true, beep:true, unknown:true, boxes:true, wall:false, focal:1.0, warn:2.0, danger:1.0, faceThr:0.5 };
 
@@ -225,8 +231,10 @@ function addLog(text){
 }
 logEl.firstElementChild.dataset.empty = '1';
 
+let lastSpoken = '', listening = false, lastTtsEnd = 0;
 function speak(text, urgent){
-  if(!cfg.voice || !('speechSynthesis' in window)){ addLog(text); return true; }
+  if(listening && !urgent) return false;          // لا نتكلم أثناء الاستماع لأمر صوتي
+  if(!cfg.voice || !('speechSynthesis' in window)){ lastSpoken = text; addLog(text); return true; }
   const ss = speechSynthesis;
   if(urgent){ ss.cancel(); }
   else if(ss.speaking || ss.pending){ return false; }
@@ -234,7 +242,9 @@ function speak(text, urgent){
   const v = voiceObj || pickVoice();
   if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'ar-SA'; }
   u.rate = 1.0; u.pitch = 1.0;
+  u.onend = u.onerror = () => { lastTtsEnd = Date.now(); };
   ss.speak(u);
+  lastSpoken = text;
   addLog(text);
   return true;
 }
@@ -316,6 +326,10 @@ function updateSystemList(){
     : '✗ المتصفح لا يدعم النطق';
   li.className = hasAr ? 'good' : 'bad';
   ul.appendChild(li);
+  const lr = document.createElement('li');
+  lr.textContent = SR ? '✓ الأوامر الصوتية متوفرة (تحتاج إنترنت)' : '✗ الأوامر الصوتية غير مدعومة في هذا المتصفح';
+  lr.className = SR ? 'good' : 'bad';
+  ul.appendChild(lr);
   refreshChip();
 }
 function refreshChip(){
@@ -679,12 +693,7 @@ function renderMem(){
   for(const key of Object.keys(MEM_ITEMS)){
     const b = document.createElement('button');
     b.className = 'big'; b.textContent = MEM_ITEMS[key].ask;
-    b.addEventListener('click', () => {
-      initAudio();
-      const t = memAnswer(key);
-      $('#memAns').textContent = t;
-      speak(t, true);
-    });
+    b.addEventListener('click', () => askMem(key));
     grid.appendChild(b);
   }
 }
@@ -817,6 +826,175 @@ $('#sReset').addEventListener('click', () => { Object.assign(cfg, DEFAULTS); sav
 $('#sMemClear').addEventListener('click', () => { mem = {}; memStreak = {}; memDirty = false; saveJSON(MEM_KEY, mem); $('#memAns').textContent = ''; speak('تم مسح ذاكرة الأغراض', true); });
 window.addEventListener('pagehide', flushMemory);
 document.addEventListener('visibilitychange', () => { if(document.hidden) flushMemory(); });
+
+/* ---------- الأوامر الصوتية (اضغط الزر ثم تكلم) ---------- */
+function normAr(s){
+  return String(s || '').toLowerCase()
+    .replace(/[ً-ْـ]/g, '')
+    .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+    .replace(/[^ء-يa-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+const MEM_WORDS = {
+  'cell phone':['جوال','موبايل','هاتف','تلفون'],
+  'remote':['ريموت','ريمود','التحكم'],
+  'laptop':['لابتوب','لاب توب','حاسوب','كمبيوتر'],
+  'cup':['كوب','فنجان','كاس'],
+  'bottle':['قارورة','زجاجة','قارورا'],
+  'backpack':['شنطة','حقيبة','شنطه'],
+  'book':['كتاب']
+};
+function askMem(key){
+  initAudio();
+  const t = memAnswer(key);
+  $('#memAns').textContent = t;
+  speak(t, true);
+}
+function replyV(t){ const k = lastSpoken; speak(t, true); lastSpoken = k; }   // رد على أمر دون أن يغيّر ما يعيده «كرر»
+
+function runCommand(raw){
+  const t = normAr(raw);
+  if(!t) return false;
+  const has = (...ws) => ws.some(w => t.includes(normAr(w)));
+  for(const key of Object.keys(MEM_WORDS)){
+    if(MEM_WORDS[key].some(w => t.includes(normAr(w)))){ askMem(key); return true; }
+  }
+  if(has('كاميرا') && has('بدل','اقلب','قلب','غير','تبديل','امامي','خلفي')){ $('#flipBtn').click(); return true; }
+  if(has('استماع','اسمع') && has('وقف','ايقاف','اوقف','توقف','اطفي','طفي','اغلق')){ setCont(false); return true; }
+  if(has('وقف','ايقاف','اوقف','توقف','اطفي','طفي','اغلق')){
+    if(running) stopAll().then(() => replyV('تم الإيقاف')); else replyV('بصيرة متوقفة أصلا');
+    return true;
+  }
+  if(has('ابدا','شغل','تشغيل','ابتدي')){
+    if(running) replyV('بصيرة تعمل بالفعل');
+    else if($('#startBtn').disabled) replyV('النظام لم يجهز بعد، انتظر قليلا');
+    else startAll();
+    return true;
+  }
+  if(has('كرر','اعد','عيد','ايش قلت','وش قلت')){
+    if(lastSpoken) speak(lastSpoken, true); else replyV('ما عندي شيء لأكرره');
+    return true;
+  }
+  if(has('مساعده','اوامر','ساعدني','help')){
+    replyV('الأوامر: ابدأ، إيقاف، وين جوالي، وين الريموت، وين اللابتوب، كرر، بدل الكاميرا');
+    return true;
+  }
+  return false;
+}
+
+let rec = null;
+function setVoiceBtn(on){
+  const b = $('#voiceBtn');
+  b.textContent = on ? '🎤 أستمع… ارفع إصبعك عند الانتهاء' : '🎤 اضغط مطولًا وتكلم';
+  b.classList.toggle('on', on);
+}
+function toggleListen(){
+  initAudio();
+  if(!SR){ replyV('متصفحك لا يدعم الأوامر الصوتية، استخدم الأزرار'); return; }
+  if(listening && rec){ try{ rec.stop(); }catch(e){} return; }
+  try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  pauseCont();
+  rec = new SR();
+  rec.lang = 'ar-SA'; rec.interimResults = false; rec.maxAlternatives = 3; rec.continuous = false;
+  rec.onresult = e => {
+    listening = false;
+    const res = e.results[e.results.length - 1], alts = [];
+    for(let i = 0; i < res.length; i++) alts.push(res[i].transcript);
+    addLog('أمر صوتي: ' + alts[0]);
+    if(!alts.some(a => runCommand(a))) replyV('ما فهمت. قل مساعدة لسماع الأوامر');
+  };
+  rec.onerror = e => {
+    listening = false;
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') replyV('لم يُسمح باستخدام الميكروفون. اسمح به من إعدادات المتصفح');
+    else if(e.error === 'no-speech') replyV('ما سمعت شيئا');
+    else if(e.error === 'network') replyV('الأوامر الصوتية تحتاج إنترنت');
+    else if(e.error !== 'aborted') replyV('تعذر تشغيل الأوامر الصوتية');
+  };
+  rec.onend = () => { listening = false; setVoiceBtn(false); resumeCont(); };
+  try{ listening = true; setVoiceBtn(true); beep(900); rec.start(); }
+  catch(err){ listening = false; setVoiceBtn(false); replyV('تعذر تشغيل الميكروفون'); resumeCont(); }
+}
+/* اضغط مطولًا للتحدث (push-to-talk). التفعيل بدون ضغط مطوّل (قارئ الشاشة: نقر مزدوج) يبقى يعمل كتشغيل/إيقاف */
+const voiceBtn = $('#voiceBtn');
+let pttDown = false;
+voiceBtn.addEventListener('pointerdown', e => {
+  pttDown = true;
+  try{ voiceBtn.setPointerCapture(e.pointerId); }catch(err){}
+  try{ if(navigator.vibrate) navigator.vibrate(30); }catch(err){}
+  if(!listening) toggleListen();
+});
+const pttRelease = () => {
+  if(pttDown && listening && rec){ try{ rec.stop(); }catch(err){} }
+  setTimeout(() => { pttDown = false; }, 400);   // إن لم تصل النقرة التابعة (إصبع خرج عن الزر)
+};
+voiceBtn.addEventListener('pointerup', pttRelease);
+voiceBtn.addEventListener('pointercancel', pttRelease);
+voiceBtn.addEventListener('contextmenu', e => e.preventDefault());
+voiceBtn.addEventListener('click', () => {
+  if(pttDown){ pttDown = false; return; }     // النقرة التابعة للضغط المطوّل نتجاهلها
+  toggleListen();                              // تفعيل بالقارئ أو لوحة المفاتيح
+});
+
+/* ---------- الاستماع المستمر بكلمة التنبيه «بصيرة» ---------- */
+const WAKE = /(بصيره|بصيرا|بسيره|بصير)/;
+let contMode = false, contPaused = false, contRec = null, contStartT = 0, contFails = 0, armedUntil = 0;
+function setContBtn(){
+  const b = $('#contBtn');
+  b.textContent = contMode ? '👂 الاستماع المستمر: مفعّل (قل: بصيرة …)' : '👂 الاستماع المستمر: متوقف';
+  b.setAttribute('aria-pressed', contMode ? 'true' : 'false');
+}
+function handleCont(alts){
+  const now = Date.now();
+  for(const a of alts){
+    const w = a.match(WAKE);
+    if(!w) continue;
+    const rest = a.slice(w.index + w[0].length).trim();
+    if(!rest){ armedUntil = now + 7000; beep(900); return; }     // قال «بصيرة» فقط: ننتظر الأمر التالي
+    if(!runCommand(rest)) replyV('ما فهمت. قل مساعدة لسماع الأوامر');
+    return;
+  }
+  if(now < armedUntil){
+    armedUntil = 0;
+    if(!alts.some(a => runCommand(a))) replyV('ما فهمت. قل مساعدة لسماع الأوامر');
+  }
+}
+function onContResult(e){
+  for(let i = e.resultIndex; i < e.results.length; i++){
+    if(!e.results[i].isFinal) continue;
+    // نتجاهل ما يلتقطه الميكروفون من صوت التطبيق نفسه
+    try{ if(speechSynthesis.speaking || Date.now() - lastTtsEnd < 1500) continue; }catch(err){}
+    const alts = [];
+    for(let j = 0; j < e.results[i].length; j++) alts.push(normAr(e.results[i][j].transcript));
+    handleCont(alts);
+  }
+}
+function startCont(){
+  if(!SR || !contMode || contPaused) return;
+  try{ contRec = new SR(); }catch(e){ return; }
+  contRec.lang = 'ar-SA'; contRec.continuous = true; contRec.interimResults = false; contRec.maxAlternatives = 3;
+  contRec.onresult = onContResult;
+  contRec.onerror = e => {
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){ contMode = false; setContBtn(); replyV('لم يُسمح باستخدام الميكروفون. اسمح به من إعدادات المتصفح'); }
+    else if(e.error === 'network'){ contMode = false; setContBtn(); replyV('الاستماع المستمر يحتاج إنترنت'); }
+  };
+  contRec.onend = () => {
+    contFails = (Date.now() - contStartT < 1500) ? contFails + 1 : 0;
+    if(!contMode || contPaused) return;
+    if(contFails > 6){ contMode = false; setContBtn(); replyV('تعذر الاستماع المستمر، استخدم زر التحدث'); return; }
+    setTimeout(startCont, 400);
+  };
+  contStartT = Date.now();
+  try{ contRec.start(); }
+  catch(e){ contFails++; if(contFails <= 6) setTimeout(startCont, 800); }
+}
+function pauseCont(){ contPaused = true; try{ if(contRec) contRec.abort(); }catch(e){} }
+function resumeCont(){ contPaused = false; if(contMode) setTimeout(startCont, 300); }
+function setCont(on){
+  if(on && !SR){ replyV('متصفحك لا يدعم الأوامر الصوتية'); return; }
+  contMode = on; contFails = 0; armedUntil = 0; setContBtn();
+  if(on){ initAudio(); replyV('تم تشغيل الاستماع المستمر. قل بصيرة ثم الأمر'); contPaused = false; setTimeout(startCont, 600); }
+  else { try{ if(contRec) contRec.abort(); }catch(e){} replyV('تم إيقاف الاستماع المستمر'); }
+}
+$('#contBtn').addEventListener('click', () => setCont(!contMode));
 
 /* ---------- البدء ---------- */
 if(location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) $('#httpsWarn').hidden = false;
